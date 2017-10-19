@@ -1,8 +1,10 @@
 package com.example.developer.locationshare
 
 import com.example.developer.locationshare.model.User
+import com.google.android.gms.maps.model.Marker
 
 
 object UsersDataSingleton {
-    var arrayUsers: HashMap<String, User> = hashMapOf()
+    val arrayUsers: HashMap<String, User> = hashMapOf()
+    val arrayMarkers: HashMap<String, Marker?> = hashMapOf()
 }

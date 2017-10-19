@@ -32,12 +32,10 @@ class MapsActivity : AppCompatActivity(),
         GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener,
         LocationListener {
-    var googleMap: GoogleMap? = null
-    var locationRequest: LocationRequest? = null
-    var googleApiClient: GoogleApiClient? = null
-    var marker: Marker? = null
-
-    lateinit var token: String
+    private var googleMap: GoogleMap? = null
+    private lateinit var locationRequest: LocationRequest
+    private var googleApiClient: GoogleApiClient? = null
+    private var marker: Marker? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,11 +44,10 @@ class MapsActivity : AppCompatActivity(),
         authToDatabase(intent.getStringExtra("token"))
         buildGoogleApiClient()
         googleApiClient!!.connect()
-
     }
 
-    fun authToDatabase(token: String) {
-        var cred: AuthCredential = GoogleAuthProvider.getCredential(token, null)
+    private fun authToDatabase(token: String) {
+        val cred: AuthCredential = GoogleAuthProvider.getCredential(token, null)
         FirebaseAuth.getInstance()?.signInWithCredential(cred)
                 ?.addOnCompleteListener(this) { task ->
                     if (task.isSuccessful) {
@@ -85,41 +82,33 @@ class MapsActivity : AppCompatActivity(),
 
 
     private fun setUpMap() {
-
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
-            googleMap?.isMyLocationEnabled = true
-        } else {
-            // Show rationale and request permission.
-        }
-
-        googleMap?.mapType = GoogleMap.MAP_TYPE_NORMAL
-        //googleMap?.isMyLocationEnabled = true
-        googleMap?.uiSettings?.isZoomControlsEnabled = true
-        createMarkers()
-    }
-
-    fun createMarkers() {
-        for (item in UsersDataSingleton.arrayUsers) {
-            addMarker(item.value)
+        val a = googleMap
+        if (a != null) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED) {
+                a.isMyLocationEnabled = true
+            } else {
+                // Show rationale and request permission.
+            }
+            a.mapType = GoogleMap.MAP_TYPE_NORMAL
+            a.uiSettings?.isZoomControlsEnabled = true
+            googleMap = a
         }
     }
 
-    fun addMarker(user: User) {
+    private fun addMarker(user: User): Marker? {
         val a = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-        googleMap?.addMarker(MarkerOptions()
+       return googleMap?.addMarker(MarkerOptions()
                 .position(LatLng(a[0].toDouble(), a[1].toDouble()))
                 .title(user.name)
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)))
     }
 
-
     override fun onConnected(bundle: Bundle?) {
         locationRequest = LocationRequest()
-        locationRequest!!.interval = 10
-        locationRequest!!.fastestInterval = 10
-        locationRequest!!.priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
-        // locationRequest!!.smallestDisplacement = 0.1F
+        locationRequest.interval = 10
+        locationRequest.fastestInterval = 10
+        locationRequest.priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
             LocationServices.FusedLocationApi.requestLocationUpdates(googleApiClient, locationRequest, this)
@@ -134,58 +123,33 @@ class MapsActivity : AppCompatActivity(),
 
     override fun onLocationChanged(location: Location) {
         LocationServices.FusedLocationApi.removeLocationUpdates(googleApiClient, this)
-        //remove previously placed Marker
         if (marker != null) {
             marker!!.remove()
         }
+
         val latLng = LatLng(location.latitude, location.longitude)
-        setData(latLng)
-        //place marker where user just clicked
-//        marker = googleMap?.addMarker(MarkerOptions()
-//                .position(latLng)
-//                .title("Current Location")
-//                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)))
+        setData(latLng, true)
 
         val cameraPosition = CameraPosition.Builder()
                 .target(latLng).zoom(5f).build()
-
         googleMap?.animateCamera(CameraUpdateFactory
                 .newCameraPosition(cameraPosition))
     }
 
-    private fun setData(latLng: LatLng) {
+    private fun setData(latLng: LatLng, isActive: Boolean) {
         val database = FirebaseDatabase.getInstance()
         val myRef = database.reference
+
         val email = intent.getStringExtra("email").toString()
         val displayName = intent.getStringExtra("display_name").toString()
         val latLng = resources.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString())
-        val user=User(displayName, email, latLng)
+        val user = User(displayName, email, latLng, isActive)
+
         myRef.child("users").child(user.hashCode().toString()).setValue(user)
-    }
-
-    private fun getArrayLatLng() {
-        val database = FirebaseDatabase.getInstance()
-        //TODO
-        database.reference.child("users").addValueEventListener(object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-//TODO
-//                val b = snapshot.value.toString().split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-//                val c = LatLng(b[0].toDouble(), b[1].toDouble())
-//                val d = c.toString()
-//                Log.i("LOL", d)
-            }
-
-            override fun onCancelled(databaseError: DatabaseError) {}
-        })
     }
 
     override fun onConnectionFailed(connectionResult: ConnectionResult) {
 
-    }
-
-    private fun toLatLng(value: String): LatLng {
-        val b = value.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-        return LatLng(b[0].toDouble(), b[1].toDouble())
     }
 
     private fun readData() {
@@ -197,11 +161,15 @@ class MapsActivity : AppCompatActivity(),
 
             override fun onDataChange(dataSnapshot: DataSnapshot) {
                 for (postSnapshot in dataSnapshot.children) {
-                    // TODO: handle the post
                     val value = postSnapshot.getValue(User::class.java)
                     val key = postSnapshot.key
                     if (value != null) {
                         UsersDataSingleton.arrayUsers.put(key, value)
+                        if (value.isActive) {
+                            UsersDataSingleton.arrayMarkers[key]= addMarker(value)
+                        } else {
+                            UsersDataSingleton.arrayMarkers[key]?.remove()
+                        }
                     }
                 }
             }
