@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "1068796887191",
+    "firebase_url": "https://stunning-maxim-183308.firebaseio.com",
+    "project_id": "stunning-maxim-183308",
+    "storage_bucket": "stunning-maxim-183308.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1068796887191:android:2aaae4b6b6fb8a4a",
+        "android_client_info": {
+          "package_name": "com.example.developer.locationshare"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1068796887191-6thnsr3oa7rql9rpg61hj257njoqiuf9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.developer.locationshare",
+            "certificate_hash": "787d0dfa08033d7527768378f4463b9984c48a56"
+          }
+        },
+        {
+          "client_id": "1068796887191-1rokjkgmahn430683ice156ej0mao852.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBB3WJor_O7YajUHdK-hRiiG3Pf2gGpYEg"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 2,
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1068796887191-1rokjkgmahn430683ice156ej0mao852.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Location Share</string>
+    <string name="title_activity_maps">Map</string>
+    <string name="latLng">%s1,%s2</string>
+</resources>
