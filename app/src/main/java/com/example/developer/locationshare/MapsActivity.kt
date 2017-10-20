@@ -1,12 +1,14 @@
 package com.example.developer.locationshare
 
-
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
+import com.example.developer.locationshare.model.Convert.Companion.toLatLng
 import com.example.developer.locationshare.model.User
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.api.GoogleApiClient
@@ -43,7 +45,6 @@ class MapsActivity : AppCompatActivity(),
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_maps)
 
-
         val email = intent.getStringExtra("email").toString()
         val displayName = intent.getStringExtra("display_name").toString()
         user = User(displayName, email, "", true)
@@ -77,8 +78,7 @@ class MapsActivity : AppCompatActivity(),
         mapFragment.getMapAsync(this)
 
         if (user.latLng.isNotEmpty()) {
-            val arrayWithLatLng = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-            setData(LatLng(arrayWithLatLng[0].toDouble(), arrayWithLatLng[1].toDouble()), true)
+            setData(toLatLng(user.latLng), true)
         }
     }
 
@@ -139,9 +139,8 @@ class MapsActivity : AppCompatActivity(),
 
     override fun onLocationChanged(location: Location) {
         LocationServices.FusedLocationApi.removeLocationUpdates(googleApiClient, this)
-        if (marker != null) {
-            marker!!.remove()
-        }
+
+        marker?.remove()
 
         val latLng = LatLng(location.latitude, location.longitude)
         setData(latLng, true)
@@ -156,9 +155,8 @@ class MapsActivity : AppCompatActivity(),
         val database = FirebaseDatabase.getInstance()
         val myRef = database.reference
 
-        val latLng = resources.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString())
         user.isActive = isActive
-        user.latLng = latLng
+        user.latLng = resources.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString())
 
         myRef.child("users").child(user.hashCode().toString()).setValue(user)
     }
@@ -167,9 +165,7 @@ class MapsActivity : AppCompatActivity(),
 
     }
 
-    //    fun o() {
-//        val a = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-//    }
+
     private fun readData() {
         val database = FirebaseDatabase.getInstance()
         val ref = database.reference.child("users")
@@ -183,11 +179,9 @@ class MapsActivity : AppCompatActivity(),
                     val key = postSnapshot.key
                     if (value != null) {
                         UsersDataSingleton.arrayUsers.put(key, value)
+                        UsersDataSingleton.arrayMarkers[key]?.remove()
                         if (value.isActive) {
-                            UsersDataSingleton.arrayMarkers[key]?.remove()
                             UsersDataSingleton.arrayMarkers[key]= addMarker(value)
-                        } else {
-                            UsersDataSingleton.arrayMarkers[key]?.remove()
                         }
                     }
                 }
@@ -197,8 +191,28 @@ class MapsActivity : AppCompatActivity(),
 
     override fun onStop() {
         super.onStop()
-//TODO
-        val arrayWithLatLng = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-        setData(LatLng(arrayWithLatLng[0].toDouble(), arrayWithLatLng[1].toDouble()), false)
+        //TODO
+        setData(toLatLng(user.latLng), false)
+    }
+
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        super.onPrepareOptionsMenu(menu)
+        return true
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_options, menu)
+        return super.onCreateOptionsMenu(menu)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
+        R.id.menu_log_out -> {
+            googleApiClient.clearDefaultAccountAndReconnect()
+            finish()
+            true
+        }
+
+        else -> super.onOptionsItemSelected(item)
     }
 }

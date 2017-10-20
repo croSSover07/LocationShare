@@ -7,8 +7,6 @@ class User(
         var latLng: String,
         var isActive:Boolean
 ) {
-
-
     constructor() : this("name", "email", "latLng",false)
 
     override fun hashCode(): Int = email.hashCode()

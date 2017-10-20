@@ -3,4 +3,5 @@
     <string name="title_activity_maps">Map</string>
     <string name="latLng">%s1,%s2</string>
     <string name="message_to_continue">Too continue you must signIn</string>
+    <string name="log_out">Log Out</string>
 </resources>

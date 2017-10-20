@@ -68,8 +68,6 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     .putExtra("display_name", acct?.displayName.toString())
                     .putExtra("email", acct?.email.toString())
                     .putExtra("token", acct?.idToken.toString())
-
-            googleApiClient.clearDefaultAccountAndReconnect()
             startActivity(intent)
         } else {
             txtInfo.text = getString(R.string.message_to_continue)
