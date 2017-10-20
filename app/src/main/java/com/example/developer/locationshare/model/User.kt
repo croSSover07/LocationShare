@@ -14,10 +14,7 @@ class User() {
         this.isActive = isActive
     }
 
-    override fun hashCode(): Int {
-        email.hashCode()
-        return email.hashCode()
-    }
+    override fun hashCode(): Int = email.hashCode()
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
