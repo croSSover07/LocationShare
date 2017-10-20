@@ -1,18 +1,15 @@
 package com.example.developer.locationshare.model
 
 
-class User() {
-    lateinit var name: String
-    lateinit var email: String
-    lateinit var latLng: String
-    var isActive: Boolean = false
+class User(
+        var name: String,
+        var email: String,
+        var latLng: String,
+        var isActive:Boolean
+) {
 
-    constructor(name: String, email: String, latLng: String   , isActive: Boolean) : this() {
-        this.name = name
-        this.email = email
-        this.latLng = latLng
-        this.isActive = isActive
-    }
+
+    constructor() : this("name", "email", "latLng",false)
 
     override fun hashCode(): Int = email.hashCode()
 
