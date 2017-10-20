@@ -41,10 +41,6 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         txtInfo = findViewById(R.id.textView_info)
     }
 
-    public override fun onStart() {
-        super.onStart()
-    }
-
     override fun onClick(v: View) {
         when (v.id) {
             R.id.button_signGoogle -> signInGoogle()

@@ -34,16 +34,27 @@ class MapsActivity : AppCompatActivity(),
         LocationListener {
     private var googleMap: GoogleMap? = null
     private lateinit var locationRequest: LocationRequest
-    private var googleApiClient: GoogleApiClient? = null
+    private lateinit var googleApiClient: GoogleApiClient
     private var marker: Marker? = null
+
+    private lateinit var user: User
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_maps)
 
-        authToDatabase(intent.getStringExtra("token"))
+
+        val email = intent.getStringExtra("email").toString()
+        val displayName = intent.getStringExtra("display_name").toString()
+        user = User(displayName, email, "", true)
+    }
+
+    override fun onStart() {
+        super.onStart()
+
         buildGoogleApiClient()
-        googleApiClient!!.connect()
+        authToDatabase(intent.getStringExtra("token"))
+        googleApiClient.connect()
     }
 
     private fun authToDatabase(token: String) {
@@ -64,6 +75,11 @@ class MapsActivity : AppCompatActivity(),
         val mapFragment = supportFragmentManager
                 .findFragmentById(R.id.map) as SupportMapFragment
         mapFragment.getMapAsync(this)
+
+        if (user.latLng.isNotEmpty()) {
+            val arrayWithLatLng = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+            setData(LatLng(arrayWithLatLng[0].toDouble(), arrayWithLatLng[1].toDouble()), true)
+        }
     }
 
     @Synchronized private fun buildGoogleApiClient() {
@@ -131,7 +147,7 @@ class MapsActivity : AppCompatActivity(),
         setData(latLng, true)
 
         val cameraPosition = CameraPosition.Builder()
-                .target(latLng).zoom(5f).build()
+                .target(latLng).zoom(Constant.DEFAULT_ZOOM).build()
         googleMap?.animateCamera(CameraUpdateFactory
                 .newCameraPosition(cameraPosition))
     }
@@ -140,10 +156,9 @@ class MapsActivity : AppCompatActivity(),
         val database = FirebaseDatabase.getInstance()
         val myRef = database.reference
 
-        val email = intent.getStringExtra("email").toString()
-        val displayName = intent.getStringExtra("display_name").toString()
         val latLng = resources.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString())
-        val user = User(displayName, email, latLng, isActive)
+        user.isActive = isActive
+        user.latLng = latLng
 
         myRef.child("users").child(user.hashCode().toString()).setValue(user)
     }
@@ -152,6 +167,9 @@ class MapsActivity : AppCompatActivity(),
 
     }
 
+    //    fun o() {
+//        val a = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+//    }
     private fun readData() {
         val database = FirebaseDatabase.getInstance()
         val ref = database.reference.child("users")
@@ -166,6 +184,7 @@ class MapsActivity : AppCompatActivity(),
                     if (value != null) {
                         UsersDataSingleton.arrayUsers.put(key, value)
                         if (value.isActive) {
+                            UsersDataSingleton.arrayMarkers[key]?.remove()
                             UsersDataSingleton.arrayMarkers[key]= addMarker(value)
                         } else {
                             UsersDataSingleton.arrayMarkers[key]?.remove()
@@ -176,4 +195,10 @@ class MapsActivity : AppCompatActivity(),
         })
     }
 
+    override fun onStop() {
+        super.onStop()
+//TODO
+        val arrayWithLatLng = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+        setData(LatLng(arrayWithLatLng[0].toDouble(), arrayWithLatLng[1].toDouble()), false)
+    }
 }
