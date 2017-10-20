@@ -70,7 +70,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     .putExtra("token", acct?.idToken.toString())
             startActivity(intent)
         } else {
-            txtInfo.text = getString(R.string.message_to_continue)
+            txtInfo.text = getString(R.string.error_message_to_continue)
         }
     }
 }

@@ -34,12 +34,14 @@ class MapsActivity : AppCompatActivity(),
         GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener,
         LocationListener {
+
     private var googleMap: GoogleMap? = null
     private lateinit var locationRequest: LocationRequest
     private lateinit var googleApiClient: GoogleApiClient
-    private var marker: Marker? = null
 
     private lateinit var user: User
+
+    private var exit = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -96,34 +98,33 @@ class MapsActivity : AppCompatActivity(),
         setUpMap()
     }
 
-
     private fun setUpMap() {
-        val a = googleMap
-        if (a != null) {
+        val copyGoogleMap = googleMap
+        if (copyGoogleMap != null) {
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                     == PackageManager.PERMISSION_GRANTED) {
-                a.isMyLocationEnabled = true
+                copyGoogleMap.isMyLocationEnabled = true
             } else {
                 // Show rationale and request permission.
             }
-            a.mapType = GoogleMap.MAP_TYPE_NORMAL
-            a.uiSettings?.isZoomControlsEnabled = true
-            googleMap = a
+            copyGoogleMap.mapType = GoogleMap.MAP_TYPE_NORMAL
+            copyGoogleMap.uiSettings?.isZoomControlsEnabled = true
+            googleMap = copyGoogleMap
         }
     }
 
     private fun addMarker(user: User): Marker? {
-        val a = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-       return googleMap?.addMarker(MarkerOptions()
-                .position(LatLng(a[0].toDouble(), a[1].toDouble()))
+        val arrayOfLatAndLng = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
+        return googleMap?.addMarker(MarkerOptions()
+                .position(LatLng(arrayOfLatAndLng[0].toDouble(), arrayOfLatAndLng[1].toDouble()))
                 .title(user.name)
                 .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)))
     }
 
     override fun onConnected(bundle: Bundle?) {
         locationRequest = LocationRequest()
-        locationRequest.interval = 10
-        locationRequest.fastestInterval = 10
+        locationRequest.interval = Constant.interval
+        locationRequest.fastestInterval = Constant.fastestInterval
         locationRequest.priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
@@ -131,7 +132,6 @@ class MapsActivity : AppCompatActivity(),
         } else {
             // Show rationale and request permission.
         }
-
     }
 
     override fun onConnectionSuspended(i: Int) {
@@ -140,11 +140,12 @@ class MapsActivity : AppCompatActivity(),
     override fun onLocationChanged(location: Location) {
         LocationServices.FusedLocationApi.removeLocationUpdates(googleApiClient, this)
 
-        marker?.remove()
-
         val latLng = LatLng(location.latitude, location.longitude)
-        setData(latLng, true)
-
+        if (exit) {
+            setData(latLng, false)
+        } else {
+            setData(latLng, true)
+        }
         val cameraPosition = CameraPosition.Builder()
                 .target(latLng).zoom(Constant.DEFAULT_ZOOM).build()
         googleMap?.animateCamera(CameraUpdateFactory
@@ -189,13 +190,6 @@ class MapsActivity : AppCompatActivity(),
         })
     }
 
-    override fun onStop() {
-        super.onStop()
-        //TODO
-        setData(toLatLng(user.latLng), false)
-    }
-
-
     override fun onPrepareOptionsMenu(menu: Menu): Boolean {
         super.onPrepareOptionsMenu(menu)
         return true
@@ -208,11 +202,33 @@ class MapsActivity : AppCompatActivity(),
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
         R.id.menu_log_out -> {
-            googleApiClient.clearDefaultAccountAndReconnect()
+            toExit()
             finish()
             true
         }
 
         else -> super.onOptionsItemSelected(item)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        setData(toLatLng(user.latLng), false)
+    }
+
+    override fun onDestroy() {
+        toExit()
+        super.onDestroy()
+    }
+
+    override fun onBackPressed() {
+        toExit()
+        finishAffinity()
+        System.exit(0)
+    }
+
+    fun toExit() {
+        exit = true
+        googleApiClient.clearDefaultAccountAndReconnect()
+        setData(toLatLng(user.latLng), false)
     }
 }
