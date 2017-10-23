@@ -25,25 +25,28 @@ import java.lang.ref.WeakReference
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
-    private lateinit var map: GoogleMap
+    private var weakRefActivity = WeakReference(this@MapsActivity)
 
+    private lateinit var map: GoogleMap
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
+    private lateinit var locationRequest: LocationRequest
 
     private lateinit var user: User
 
-    private var weakRefActivity = WeakReference(this@MapsActivity)
-
-    private lateinit var locationRequest: LocationRequest
+    private var databaseRef = FirebaseDatabase.getInstance().reference
 
     private var locationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
             super.onLocationResult(locationResult)
             val location = locationResult.lastLocation
             val latLng = LatLng(location.latitude, location.longitude)
+
             setData(latLng, true)
+
 
             val cameraPosition = CameraPosition.Builder()
                     .target(latLng).zoom(Constant.DEFAULT_ZOOM).build()
+
             weakRefActivity.get()?.map?.animateCamera(CameraUpdateFactory
                     .newCameraPosition(cameraPosition))
         }
@@ -55,27 +58,28 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         initValues()
     }
 
-
-    private fun initValues() {
-        val mapFragment = supportFragmentManager
-                .findFragmentById(R.id.map) as SupportMapFragment
-        mapFragment.getMapAsync(this)
-
-        val email = intent.getStringExtra("email").toString()
-        val displayName = intent.getStringExtra("display_name").toString()
-        user = User(displayName, email, "", true)
-
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
-
-        locationRequest = LocationRequest()
-        locationRequest.interval = Constant.interval
-        locationRequest.fastestInterval = Constant.fastestInterval
-        locationRequest.priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
-    }
-
     override fun onStart() {
         super.onStart()
         authToDatabase(intent.getStringExtra("token"))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
+        } else {            // Show rationale and request permission.
+        }
+    }
+
+    override fun onBackPressed() {
+        super.onBackPressed()
+        block()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        block()
     }
 
     private fun authToDatabase(token: String) {
@@ -90,10 +94,24 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 }
     }
 
+    private fun initValues() {
+        (supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment).getMapAsync(this)
+
+        val email = intent.getStringExtra("email").toString()
+        val displayName = intent.getStringExtra("display_name").toString()
+        user = User(displayName, email, "", true)
+
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+
+        locationRequest = LocationRequest()
+        locationRequest.interval = Constant.interval
+        locationRequest.fastestInterval = Constant.fastestInterval
+        locationRequest.priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
+    }
+
     private fun readData() {
-        val database = FirebaseDatabase.getInstance()
-        val ref = database.reference.child("users")
-        ref.addValueEventListener(object : ValueEventListener {
+        databaseRef.child("users")
+                .addValueEventListener(object : ValueEventListener {
             override fun onCancelled(p0: DatabaseError?) {
             }
 
@@ -122,11 +140,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun setData(latLng: LatLng, isActive: Boolean) {
-        val databaseReference = FirebaseDatabase.getInstance().reference
-        weakRefActivity.get()?.user?.isActive = isActive
-        weakRefActivity.get()?.user?.latLng = resources.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString())
+        val activity = weakRefActivity.get()
+        if (activity != null) {
+            val databaseReference = activity.databaseRef
+            activity.user.isActive = isActive
+            activity.user.latLng = activity.resources?.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString()).toString()
 
-        databaseReference.child("users").child(weakRefActivity.get()?.user?.hashCode().toString()).setValue(weakRefActivity.get()?.user)
+            if (databaseReference != null) {
+                databaseReference.child("users").child(activity.user.hashCode().toString()).setValue(activity.user)
+            }
+        }
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
@@ -141,27 +164,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         map.uiSettings?.isZoomControlsEnabled = true
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
-                == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
-        } else {
-            // Show rationale and request permission.
-        }
-    }
 
-    override fun onBackPressed() {
-        super.onBackPressed()
-        toExit()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        toExit()
-    }
-
-    private fun toExit() {
+    private fun block() {
         setData(Convert.toLatLng(user.latLng), false)
         fusedLocationProviderClient.removeLocationUpdates(locationCallback)
     }

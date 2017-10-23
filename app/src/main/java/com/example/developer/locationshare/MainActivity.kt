@@ -78,7 +78,12 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     .putExtra("display_name", acct?.displayName.toString())
                     .putExtra("email", acct?.email.toString())
                     .putExtra("token", acct?.idToken.toString())
-            startActivity(intent)
+            if (checkGpsStatus(this)) {
+                startActivity(intent)
+            } else {
+                txtInfo.text = getString(R.string.error_message_gps_disabled)
+            }
+
         } else {
             txtInfo.text = getString(R.string.error_message_to_continue)
         }
