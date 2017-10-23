@@ -1,4 +1,4 @@
-package com.example.developer.locationshare.model
+package com.example.developer.locationshare
 
 import com.google.android.gms.maps.model.LatLng
 

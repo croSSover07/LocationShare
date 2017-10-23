@@ -1,6 +1,5 @@
-package com.example.developer.locationshare
+package com.example.developer.locationshare.model
 
-import com.example.developer.locationshare.model.User
 import com.google.android.gms.maps.model.Marker
 
 

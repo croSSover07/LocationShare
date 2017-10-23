@@ -5,4 +5,6 @@
     <string name="message_to_continue">To continue you must signIn</string>
     <string name="error_message_to_continue">ERROR, to continue you must signIn</string>
     <string name="log_out">Log Out</string>
+    <string name="title_activity_maps2">Map</string>
+    <string name="change_user">Change User</string>
 </resources>
