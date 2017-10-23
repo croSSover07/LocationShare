@@ -1,7 +1,6 @@
 package com.example.developer.locationshare
 
 import android.content.pm.PackageManager
-import android.location.Location
 import android.os.Bundle
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
@@ -35,8 +34,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private var weakRefActivity = WeakReference(this@MapsActivity)
 
     private lateinit var locationRequest: LocationRequest
-
-    private var lastKnownLocation: Location? = null
 
     private var locationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
