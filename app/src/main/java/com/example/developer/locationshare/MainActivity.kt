@@ -29,13 +29,16 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (LeakCanary.isInAnalyzerProcess(this)) {
-            // This process is dedicated to LeakCanary for heap analysis.
-            // You should not init your app in this process.
             return
         }
 
         LeakCanary.install(this@MainActivity.application)
         setContentView(R.layout.activity_main)
+        initValues()
+
+    }
+
+    private fun initValues() {
 
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(resources.getString(R.string.default_web_client_id))
@@ -45,6 +48,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 .enableAutoManage(this, null)
                 .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
                 .build()
+
         auth = FirebaseAuth.getInstance()
 
         findViewById<View>(R.id.button_signGoogle).setOnClickListener(this)
@@ -71,13 +75,12 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     }
 
     private fun handleSignInResult(result: GoogleSignInResult) {
-
         if (result.isSuccess) {
             val acct = result.signInAccount
             val intent = Intent(this@MainActivity, MapsActivity::class.java)
-                    .putExtra("display_name", acct?.displayName.toString())
-                    .putExtra("email", acct?.email.toString())
-                    .putExtra("token", acct?.idToken.toString())
+                    .putExtra(MapsActivity.EXTRA_DISPLAY_NAME, acct?.displayName.toString())
+                    .putExtra(MapsActivity.EXTRA_EMAIL, acct?.email.toString())
+                    .putExtra(MapsActivity.EXTRA_TOKEN, acct?.idToken.toString())
             if (checkGpsStatus(this)) {
                 startActivity(intent)
             } else {
@@ -105,7 +108,6 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             signInGoogle()
             true
         }
-
         else -> super.onOptionsItemSelected(item)
     }
 }

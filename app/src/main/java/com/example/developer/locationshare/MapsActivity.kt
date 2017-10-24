@@ -25,6 +25,12 @@ import java.lang.ref.WeakReference
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
+    companion object {
+        val EXTRA_TOKEN = "token"
+        val EXTRA_DISPLAY_NAME = "display_name"
+        val EXTRA_EMAIL = "email"
+    }
+
     private var weakRefActivity = WeakReference(this@MapsActivity)
 
     private lateinit var map: GoogleMap
@@ -43,7 +49,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
             setData(latLng, true)
 
-
             val cameraPosition = CameraPosition.Builder()
                     .target(latLng).zoom(Constant.DEFAULT_ZOOM).build()
 
@@ -60,7 +65,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onStart() {
         super.onStart()
-        authToDatabase(intent.getStringExtra("token"))
+        authToDatabase(intent.getStringExtra(EXTRA_TOKEN))
     }
 
     override fun onResume() {
@@ -97,16 +102,19 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun initValues() {
         (supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment).getMapAsync(this)
 
-        val email = intent.getStringExtra("email").toString()
-        val displayName = intent.getStringExtra("display_name").toString()
-        user = User(displayName, email, "", true)
+        user = User(intent.getStringExtra(EXTRA_DISPLAY_NAME).toString(),
+                intent.getStringExtra(EXTRA_EMAIL).toString(),
+                "",
+                true)
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
 
         locationRequest = LocationRequest()
-        locationRequest.interval = Constant.interval
-        locationRequest.fastestInterval = Constant.fastestInterval
-        locationRequest.priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
+        with(locationRequest) {
+            interval = Constant.INTERVAL
+            fastestInterval = Constant.FASTEST_INTERVAL
+            priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
+        }
     }
 
     private fun readData() {
@@ -146,9 +154,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             activity.user.isActive = isActive
             activity.user.latLng = activity.resources?.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString()).toString()
 
-            if (databaseReference != null) {
-                databaseReference.child("users").child(activity.user.hashCode().toString()).setValue(activity.user)
-            }
+            databaseReference?.child("users")?.child(activity.user.hashCode().toString())?.setValue(activity.user)
         }
     }
 
@@ -157,13 +163,11 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
             map.isMyLocationEnabled = true
-        } else {
-            // Show rationale and request permission.
+        } else {// Show rationale and request permission.
         }
         map.mapType = GoogleMap.MAP_TYPE_NORMAL
         map.uiSettings?.isZoomControlsEnabled = true
     }
-
 
     private fun block() {
         setData(Convert.toLatLng(user.latLng), false)
