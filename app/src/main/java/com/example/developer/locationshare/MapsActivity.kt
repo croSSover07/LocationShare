@@ -1,12 +1,21 @@
 package com.example.developer.locationshare
 
+import android.app.AlertDialog
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import com.example.developer.locationshare.model.User
 import com.example.developer.locationshare.model.UsersDataSingleton
+import com.google.android.gms.auth.api.Auth
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.auth.api.signin.GoogleSignInResult
+import com.google.android.gms.common.api.GoogleApiClient
 import com.google.android.gms.location.*
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -20,15 +29,14 @@ import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import com.squareup.leakcanary.LeakCanary
 import java.lang.ref.WeakReference
 
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     companion object {
-        val EXTRA_TOKEN = "token"
-        val EXTRA_DISPLAY_NAME = "display_name"
-        val EXTRA_EMAIL = "email"
+        val RC_SIGN_IN = 100
     }
 
     private var weakRefActivity = WeakReference(this@MapsActivity)
@@ -38,8 +46,11 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var locationRequest: LocationRequest
 
     private lateinit var user: User
+    private var currentGoogleAcc: GoogleSignInAccount? = null
 
     private var databaseRef = FirebaseDatabase.getInstance().reference
+    private lateinit var googleApiClient: GoogleApiClient
+    private var auth: FirebaseAuth? = null
 
     private var locationCallback = object : LocationCallback() {
         override fun onLocationResult(locationResult: LocationResult) {
@@ -60,19 +71,22 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_maps)
-        initValues()
-    }
 
-    override fun onStart() {
-        super.onStart()
-        authToDatabase(intent.getStringExtra(EXTRA_TOKEN))
+        if (LeakCanary.isInAnalyzerProcess(this)) {
+            return
+        }
+        LeakCanary.install(this@MapsActivity.application)
+
+        initStartValues()
     }
 
     override fun onResume() {
         super.onResume()
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
+            if (UsersDataSingleton.arrayUsers.isNotEmpty()) {
+                fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
+            }
         } else {            // Show rationale and request permission.
         }
     }
@@ -84,7 +98,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onPause() {
         super.onPause()
-        block()
+        if (UsersDataSingleton.arrayUsers.isNotEmpty()) {
+            block()
+        }
     }
 
     private fun authToDatabase(token: String) {
@@ -94,20 +110,40 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                     if (task.isSuccessful) {
                         readData()
                     } else {
-                        Toast.makeText(this@MapsActivity, "Authentication failed.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MapsActivity, getString(R.string.error_auth_failed), Toast.LENGTH_SHORT).show()
                     }
                 }
     }
 
-    private fun initValues() {
+    private fun initStartValues() {
+
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(resources.getString(R.string.default_web_client_id))
+                .requestEmail()
+                .build()
+        googleApiClient = GoogleApiClient.Builder(this)
+                .enableAutoManage(this, null)
+                .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
+                .build()
+
+        auth = FirebaseAuth.getInstance()
+
+        signInGoogle()
+    }
+
+    private fun initMapsValues() {
+        UsersDataSingleton.clear()
         (supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment).getMapAsync(this)
-
-        user = User(intent.getStringExtra(EXTRA_DISPLAY_NAME).toString(),
-                intent.getStringExtra(EXTRA_EMAIL).toString(),
-                "",
-                true)
-
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        val copy = currentGoogleAcc
+        if (copy != null) {
+            user = User(
+                    copy.id.toString(),
+                    copy.displayName.toString(),
+                    copy.email.toString(),
+                    "",
+                    true)
+            authToDatabase(copy.idToken.toString())
+        }
 
         locationRequest = LocationRequest()
         with(locationRequest) {
@@ -115,6 +151,65 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             fastestInterval = Constant.FASTEST_INTERVAL
             priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
         }
+
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
+        } else {// Show rationale and request permission.
+        }
+    }
+
+    private fun signInGoogle() {
+        val signInIntent = Auth.GoogleSignInApi.getSignInIntent(googleApiClient)
+        startActivityForResult(signInIntent, RC_SIGN_IN)
+    }
+
+    public override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == RC_SIGN_IN) {
+            val result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
+            handleSignInResult(result)
+        }
+    }
+
+    private fun handleSignInResult(result: GoogleSignInResult) {
+        if (result.isSuccess) {
+            if (result.signInAccount != null) {
+                currentGoogleAcc = result.signInAccount
+
+                if (checkGpsStatus(this)) {
+                    initMapsValues()
+                } else {                    //   txtInfo.text = getString(R.string.error_message_gps_disabled)
+                    AlertDialog.Builder(this)
+                            .setPositiveButton(android.R.string.ok, { _, _ ->
+                                finish()
+                            })
+                            .setMessage(getString(R.string.error_gps_is_disable))
+                            .show()
+                }
+            }
+        } else {            //txtInfo.text = getString(R.string.error_message_to_continue)
+        }
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        super.onPrepareOptionsMenu(menu)
+        return true
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_options, menu)
+        return super.onCreateOptionsMenu(menu)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
+        R.id.menu_log_out -> {
+            googleApiClient.clearDefaultAccountAndReconnect()
+            signInGoogle()
+            true
+        }
+        else -> super.onOptionsItemSelected(item)
     }
 
     private fun readData() {
