@@ -9,4 +9,5 @@
     <string name="error_message_gps_disabled">Gps is disable</string>
     <string name="error_gps_is_disable">GPS is disable, app \'ll close</string>
     <string name="error_auth_failed">Authentication failed.</string>
+    <string name="message_gps_turn_on">GPS is disable, pls turn on</string>
 </resources>

@@ -1,8 +1,12 @@
 package com.example.developer.locationshare
 
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Bundle
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
@@ -68,6 +72,18 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
+    private var gpsLocationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action!!.matches(LocationManager.PROVIDERS_CHANGED_ACTION.toRegex())) {
+                Toast.makeText(context, "in android.location.PROVIDERS_CHANGED",
+                        Toast.LENGTH_SHORT).show()
+                if (!checkGpsStatus(context)) {
+                    showGPSAlertDialog(context)
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_maps)
@@ -78,16 +94,28 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         LeakCanary.install(this@MapsActivity.application)
 
         initStartValues()
+
+        val action = "android.location.PROVIDERS_CHANGED"
+        val filter = IntentFilter(action)
+        this.registerReceiver(gpsLocationReceiver, filter)
     }
 
     override fun onResume() {
         super.onResume()
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
-            if (UsersDataSingleton.arrayUsers.isNotEmpty()) {
-                fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
+            if (currentGoogleAcc != null) {
+                if (checkGpsStatus(this)) {
+                    if (UsersDataSingleton.arrayUsers.isNotEmpty()) {
+                        fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
+                    } else {
+                        initMapsValues()
+                    }
+                } else {
+                    showGPSAlertDialog(this)
             }
         } else {            // Show rationale and request permission.
+            }
         }
     }
 
@@ -177,17 +205,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (result.isSuccess) {
             if (result.signInAccount != null) {
                 currentGoogleAcc = result.signInAccount
-
-                if (checkGpsStatus(this)) {
-                    initMapsValues()
-                } else {                    //   txtInfo.text = getString(R.string.error_message_gps_disabled)
-                    AlertDialog.Builder(this)
-                            .setPositiveButton(android.R.string.ok, { _, _ ->
-                                finish()
-                            })
-                            .setMessage(getString(R.string.error_gps_is_disable))
-                            .show()
-                }
             }
         } else {            //txtInfo.text = getString(R.string.error_message_to_continue)
         }
@@ -267,5 +284,18 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun block() {
         setData(Convert.toLatLng(user.latLng), false)
         fusedLocationProviderClient.removeLocationUpdates(locationCallback)
+    }
+
+    private fun showGPSAlertDialog(context: Context) {
+        AlertDialog.Builder((context as MapsActivity))
+                .setMessage(getString(R.string.message_gps_turn_on))
+                .setPositiveButton(android.R.string.ok, { _, _ ->
+                    startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                })
+                .setNegativeButton(android.R.string.cancel, { _, _ ->
+                    finish()
+                })
+                .setCancelable(false)
+                .show()
     }
 }
