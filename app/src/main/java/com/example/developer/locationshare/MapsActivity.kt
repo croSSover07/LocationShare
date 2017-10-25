@@ -34,7 +34,6 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.squareup.leakcanary.LeakCanary
-import java.lang.ref.WeakReference
 
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
@@ -42,8 +41,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     companion object {
         val RC_SIGN_IN = 100
     }
-
-    private var weakRefActivity = WeakReference(this@MapsActivity)
 
     private lateinit var map: GoogleMap
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
@@ -67,14 +64,14 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             val cameraPosition = CameraPosition.Builder()
                     .target(latLng).zoom(Constant.DEFAULT_ZOOM).build()
 
-            weakRefActivity.get()?.map?.animateCamera(CameraUpdateFactory
+            map.animateCamera(CameraUpdateFactory
                     .newCameraPosition(cameraPosition))
         }
     }
 
     private var gpsLocationReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action!!.matches(LocationManager.PROVIDERS_CHANGED_ACTION.toRegex())) {
+            if (intent.action == LocationManager.PROVIDERS_CHANGED_ACTION) {
                 Toast.makeText(context, "in android.location.PROVIDERS_CHANGED",
                         Toast.LENGTH_SHORT).show()
                 if (!checkGpsStatus(context)) {
@@ -95,8 +92,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
         initStartValues()
 
-        val action = "android.location.PROVIDERS_CHANGED"
-        val filter = IntentFilter(action)
+        val filter = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
         this.registerReceiver(gpsLocationReceiver, filter)
     }
 
@@ -107,7 +103,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             if (currentGoogleAcc != null) {
                 if (checkGpsStatus(this)) {
                     if (UsersDataSingleton.arrayUsers.isNotEmpty()) {
-                        fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
+                        fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, null)
                     } else {
                         initMapsValues()
                     }
@@ -183,7 +179,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
-            fusedLocationProviderClient.requestLocationUpdates(locationRequest, weakRefActivity.get()?.locationCallback, null)
+            fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, null)
         } else {// Show rationale and request permission.
         }
     }
@@ -259,14 +255,12 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun setData(latLng: LatLng, isActive: Boolean) {
-        val activity = weakRefActivity.get()
-        if (activity != null) {
-            val databaseReference = activity.databaseRef
-            activity.user.isActive = isActive
-            activity.user.latLng = activity.resources?.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString()).toString()
 
-            databaseReference?.child("users")?.child(activity.user.hashCode().toString())?.setValue(activity.user)
-        }
+        val databaseReference = databaseRef
+        user.isActive = isActive
+        user.latLng = resources?.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString()).toString()
+
+        databaseReference.child("users").child(user.hashCode().toString()).setValue(user)
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
