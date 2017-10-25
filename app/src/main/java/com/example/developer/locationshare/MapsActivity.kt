@@ -114,7 +114,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             } else {
                 signInGoogle()
             }
-        } else {   // Show rationale and request permission.
+        } else {
             ActivityCompat.requestPermissions(this,
                     arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
                     1)
@@ -187,7 +187,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, null)
-        } else {// Show rationale and request permission.
         }
     }
 
@@ -288,7 +287,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
             map.isMyLocationEnabled = true
-        } else {// Show rationale and request permission.
         }
         map.mapType = GoogleMap.MAP_TYPE_NORMAL
         map.uiSettings?.isZoomControlsEnabled = true
