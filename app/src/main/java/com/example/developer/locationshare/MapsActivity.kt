@@ -13,7 +13,7 @@ import android.support.v7.app.AppCompatActivity
 import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
-import com.example.developer.locationshare.model.User
+import com.example.developer.locationshare.model.UserLocation
 import com.example.developer.locationshare.model.UsersDataSingleton
 import com.google.android.gms.auth.api.Auth
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -40,13 +40,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     companion object {
         val RC_SIGN_IN = 100
+        val DEFAULT_ZOOM = 16f
+        val INTERVAL = 10L
+        val FASTEST_INTERVAL = 10L
     }
 
     private lateinit var map: GoogleMap
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var locationRequest: LocationRequest
 
-    private lateinit var user: User
+    private lateinit var userLocation: UserLocation
     private var currentGoogleAcc: GoogleSignInAccount? = null
 
     private var databaseRef = FirebaseDatabase.getInstance().reference
@@ -62,7 +65,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             setData(latLng, true)
 
             val cameraPosition = CameraPosition.Builder()
-                    .target(latLng).zoom(Constant.DEFAULT_ZOOM).build()
+                    .target(latLng).zoom(DEFAULT_ZOOM).build()
 
             map.animateCamera(CameraUpdateFactory
                     .newCameraPosition(cameraPosition))
@@ -90,10 +93,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
         LeakCanary.install(this@MapsActivity.application)
 
-        initStartValues()
-
-        val filter = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
-        this.registerReceiver(gpsLocationReceiver, filter)
+        initGoogleClient()
     }
 
     override fun onResume() {
@@ -101,17 +101,21 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED) {
             if (currentGoogleAcc != null) {
+                this.registerReceiver(gpsLocationReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION))
                 if (checkGpsStatus(this)) {
-                    if (UsersDataSingleton.arrayUsers.isNotEmpty()) {
+                    initLocalUserAndConnectDB()
+                    if (UsersDataSingleton.ARRAY_USERS.isNotEmpty()) {
                         fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, null)
                     } else {
                         initMapsValues()
                     }
                 } else {
                     showGPSAlertDialog(this)
+                }
+            } else {
+                signInGoogle()
             }
-        } else {            // Show rationale and request permission.
-            }
+        } else {   // Show rationale and request permission.
         }
     }
 
@@ -122,7 +126,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onPause() {
         super.onPause()
-        if (UsersDataSingleton.arrayUsers.isNotEmpty()) {
+        if (UsersDataSingleton.ARRAY_USERS.isNotEmpty()) {
             block()
         }
     }
@@ -139,7 +143,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 }
     }
 
-    private fun initStartValues() {
+    private fun initGoogleClient() {
 
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestIdToken(resources.getString(R.string.default_web_client_id))
@@ -151,28 +155,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 .build()
 
         auth = FirebaseAuth.getInstance()
-
-        signInGoogle()
     }
 
     private fun initMapsValues() {
-        UsersDataSingleton.clear()
+
         (supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment).getMapAsync(this)
-        val copy = currentGoogleAcc
-        if (copy != null) {
-            user = User(
-                    copy.id.toString(),
-                    copy.displayName.toString(),
-                    copy.email.toString(),
-                    "",
-                    true)
-            authToDatabase(copy.idToken.toString())
-        }
 
         locationRequest = LocationRequest()
         with(locationRequest) {
-            interval = Constant.INTERVAL
-            fastestInterval = Constant.FASTEST_INTERVAL
+            interval = INTERVAL
+            fastestInterval = FASTEST_INTERVAL
             priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
         }
 
@@ -182,6 +174,25 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, null)
         } else {// Show rationale and request permission.
         }
+    }
+
+    private fun initLocalUserAndConnectDB() {
+        UsersDataSingleton.clear()
+        val copy = currentGoogleAcc
+        if (copy != null) {
+            userLocation = UserLocation(
+                    copy.id.toString(),
+                    copy.displayName.toString(),
+                    copy.email.toString(),
+                    0.0,
+                    0.0,
+                    true)
+        }
+        connectToDatabase()
+    }
+
+    private fun connectToDatabase() {
+        authToDatabase(currentGoogleAcc?.idToken.toString())
     }
 
     private fun signInGoogle() {
@@ -203,11 +214,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 currentGoogleAcc = result.signInAccount
             }
         }
-    }
-
-    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
-        super.onPrepareOptionsMenu(menu)
-        return true
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -232,10 +238,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
             override fun onDataChange(dataSnapshot: DataSnapshot) {
                 for (postSnapshot in dataSnapshot.children) {
-                    val value = postSnapshot.getValue(User::class.java)
+                    val value = postSnapshot.getValue(UserLocation::class.java)
                     val key = postSnapshot.key
                     if (value != null) {
-                        UsersDataSingleton.arrayUsers.put(key, value)
+                        UsersDataSingleton.ARRAY_USERS.put(key, value)
                         UsersDataSingleton.arrayMarkers[key]?.remove()
                         if (value.isActive) {
                             UsersDataSingleton.arrayMarkers[key] = addMarker(value)
@@ -246,21 +252,18 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         })
     }
 
-    private fun addMarker(user: User): Marker? {
-        val arrayOfLatAndLng = user.latLng.split(",".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()
-        return map.addMarker(MarkerOptions()
-                .position(LatLng(arrayOfLatAndLng[0].toDouble(), arrayOfLatAndLng[1].toDouble()))
-                .title(user.name)
-                .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)))
-    }
+    private fun addMarker(userLocation: UserLocation): Marker? = map.addMarker(MarkerOptions()
+            .position(LatLng(userLocation.latitude, userLocation.longitude))
+            .title(userLocation.name)
+            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)))
 
     private fun setData(latLng: LatLng, isActive: Boolean) {
-
         val databaseReference = databaseRef
-        user.isActive = isActive
-        user.latLng = resources?.getString(R.string.latLng, latLng.latitude.toString(), latLng.longitude.toString()).toString()
+        userLocation.isActive = isActive
+        userLocation.latitude = latLng.latitude
+        userLocation.longitude = latLng.longitude
 
-        databaseReference.child("users").child(user.hashCode().toString()).setValue(user)
+        databaseReference.child("users").child(userLocation.hashCode().toString()).setValue(userLocation)
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
@@ -275,8 +278,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     private fun block() {
-        setData(Convert.toLatLng(user.latLng), false)
+        setData(LatLng(userLocation.latitude, userLocation.longitude), false)
         fusedLocationProviderClient.removeLocationUpdates(locationCallback)
+        unregisterReceiver(gpsLocationReceiver)
     }
 
     private fun showGPSAlertDialog(context: Context) {
@@ -286,7 +290,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                     startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                 })
                 .setNegativeButton(android.R.string.cancel, { _, _ ->
-                    unregisterReceiver(gpsLocationReceiver)
                     finish()
                 })
                 .setCancelable(false)
