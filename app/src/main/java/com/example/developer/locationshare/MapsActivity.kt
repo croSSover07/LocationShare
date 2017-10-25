@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Bundle
+import android.support.v4.app.ActivityCompat
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
 import android.view.Menu
@@ -75,8 +76,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private var gpsLocationReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == LocationManager.PROVIDERS_CHANGED_ACTION) {
-                Toast.makeText(context, "in android.location.PROVIDERS_CHANGED",
-                        Toast.LENGTH_SHORT).show()
                 if (!checkGpsStatus(context)) {
                     showGPSAlertDialog(context)
                 }
@@ -116,7 +115,23 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 signInGoogle()
             }
         } else {   // Show rationale and request permission.
+            ActivityCompat.requestPermissions(this,
+                    arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION),
+                    1)
         }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        when (requestCode) {
+            1 -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                } else {
+                    finish()
+                }
+                return
+            }
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     override fun onBackPressed() {
