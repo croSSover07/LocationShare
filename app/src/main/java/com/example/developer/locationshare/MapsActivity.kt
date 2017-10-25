@@ -206,7 +206,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             if (result.signInAccount != null) {
                 currentGoogleAcc = result.signInAccount
             }
-        } else {            //txtInfo.text = getString(R.string.error_message_to_continue)
         }
     }
 
@@ -293,6 +292,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                     startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                 })
                 .setNegativeButton(android.R.string.cancel, { _, _ ->
+                    unregisterReceiver(gpsLocationReceiver)
                     finish()
                 })
                 .setCancelable(false)
