@@ -256,10 +256,12 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                     val value = postSnapshot.getValue(UserLocation::class.java)
                     val key = postSnapshot.key
                     if (value != null) {
-                        UsersDataSingleton.ARRAY_USERS.put(key, value)
-                        UsersDataSingleton.arrayMarkers[key]?.remove()
-                        if (value.isActive) {
-                            UsersDataSingleton.arrayMarkers[key] = addMarker(value)
+                        if (userLocation.email != value.email) {
+                            UsersDataSingleton.ARRAY_USERS.put(key, value)
+                            UsersDataSingleton.arrayMarkers[key]?.remove()
+                            if (value.isActive) {
+                                UsersDataSingleton.arrayMarkers[key] = addMarker(value)
+                            }
                         }
                     }
                 }
