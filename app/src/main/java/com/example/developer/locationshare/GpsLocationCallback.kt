@@ -12,6 +12,7 @@ class GpsLocationCallback(mapsActivity: MapsActivity) : LocationCallback() {
 
     private var weakReference: WeakReference<MapsActivity> = WeakReference(mapsActivity)
 
+    // TODO: weakReference анврапится дважды.
     override fun onLocationResult(locationResult: LocationResult) {
         super.onLocationResult(locationResult)
         val location = locationResult.lastLocation
