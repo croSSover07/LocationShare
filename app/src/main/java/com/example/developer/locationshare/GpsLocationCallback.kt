@@ -12,18 +12,19 @@ class GpsLocationCallback(mapsActivity: MapsActivity) : LocationCallback() {
 
     private var weakReference: WeakReference<MapsActivity> = WeakReference(mapsActivity)
 
-    // TODO: weakReference анврапится дважды.
     override fun onLocationResult(locationResult: LocationResult) {
         super.onLocationResult(locationResult)
-        val location = locationResult.lastLocation
-        val latLng = LatLng(location.latitude, location.longitude)
 
-        weakReference.get()?.setData(latLng, true)
+        val mapsActivity = weakReference.get() ?: return
+
+        val location = locationResult.lastLocation
+        mapsActivity.setData(location.latitude, location.longitude, true)
+        mapsActivity.updateCurrentUserDataOnDatabase()
 
         val cameraPosition = CameraPosition.Builder()
-                .target(latLng).zoom(MapsActivity.DEFAULT_ZOOM).build()
+                .target(LatLng(location.latitude, location.longitude)).zoom(MapsActivity.DEFAULT_ZOOM).build()
 
-        weakReference.get()?.map?.animateCamera(CameraUpdateFactory
+        mapsActivity.map.animateCamera(CameraUpdateFactory
                 .newCameraPosition(cameraPosition))
     }
 }

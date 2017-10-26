@@ -45,6 +45,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         val DEFAULT_ZOOM = 16f
         val INTERVAL = 10L
         val FASTEST_INTERVAL = 10L
+        val REQUEST_PERMISSION_CODE = 1
+        val KEY_GOOGLE_SIGN_IN_ACCOUNT = "googleSignInAccount"
 
         val PROVIDERS_CHANGED_ACTION_FILTER = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
     }
@@ -53,19 +55,17 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private var fusedLocationProviderClient: FusedLocationProviderClient? = null
     private lateinit var locationRequest: LocationRequest
 
-    lateinit var userLocation: UserLocation
-    //        TODO: Нейминг
-    private var signInAccount: GoogleSignInAccount? = null
-    //        TODO: Нейминг array users а хранит map user location
-    val arrayUsers: HashMap<String, UserLocation> = hashMapOf()
-    val arrayMarkers: HashMap<String, Marker?> = hashMapOf()
+    private lateinit var userLocation: UserLocation
+    private var googleSignInAccount: GoogleSignInAccount? = null
+
+    private val mapUserLocationMarker: HashMap<UserLocation, Marker> = hashMapOf()
 
     private var databaseRef = FirebaseDatabase.getInstance().reference.child("users")
     private lateinit var googleApiClient: GoogleApiClient
-    private var auth: FirebaseAuth? = null
+    private var firebaseAuth: FirebaseAuth? = null
 
-    private var locationCallback = GpsLocationCallback(this)
-    private var valueListener = DatabaseListener(this)
+    private var gpsLocationCallback = GpsLocationCallback(this)
+    private var databaseValueListener = DatabaseListener(this)
 
     private var gpsLocationReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -84,30 +84,28 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (LeakCanary.isInAnalyzerProcess(this)) {
             return
         }
-        // TODO: Зачем использовать метку? Зачем использовать this?
-//        LeakCanary.install(this@MapsActivity.application)
         LeakCanary.install(application)
 
         initGoogleClient()
+        if (savedInstanceState != null) {
+            googleSignInAccount = (savedInstanceState.get(KEY_GOOGLE_SIGN_IN_ACCOUNT) as GoogleSignInAccount)
+        }
+        (supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment).getMapAsync(this)
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
     }
 
     override fun onResume() {
         super.onResume()
 
-//        TODO: Зачем создавать каждый раз новый объект фильтра.
-//        registerReceiver(gpsLocationReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION))
         registerReceiver(gpsLocationReceiver, PROVIDERS_CHANGED_ACTION_FILTER)
 
         if (checkSelfPermission(this, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED) {
-            if (signInAccount != null) {
+            if (googleSignInAccount != null) {
                 initLocalUser()
-
-                connectToDatabase()
-
+                authToDatabase(googleSignInAccount?.idToken.toString())
                 if (checkGpsStatus(this)) {
                     initMapsValues()
-
-                    fusedLocationProviderClient?.requestLocationUpdates(locationRequest, locationCallback, null)
+                    fusedLocationProviderClient?.requestLocationUpdates(locationRequest, gpsLocationCallback, null)
                 } else {
                     showGPSAlertDialog(this)
                 }
@@ -115,8 +113,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 signInGoogle()
             }
         } else {
-//          TODO: Что за 1 ? Не нужно использовать литералы в коде
-            ActivityCompat.requestPermissions(this, arrayOf(ACCESS_FINE_LOCATION), 1)
+            ActivityCompat.requestPermissions(this, arrayOf(ACCESS_FINE_LOCATION), REQUEST_PERMISSION_CODE)
         }
     }
 
@@ -127,14 +124,14 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         unregisterReceiver(gpsLocationReceiver)
 
         if (checkSelfPermission(this, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED) {
+            if (googleSignInAccount != null) {
+                databaseRef.removeEventListener(databaseValueListener)
 
-            if (signInAccount != null) {
-                databaseRef.removeEventListener(valueListener)
-
-                setData(LatLng(userLocation.latitude, userLocation.longitude), false)
+                setData(userLocation.latitude, userLocation.longitude, false)
+                updateCurrentUserDataOnDatabase()
 
                 if (fusedLocationProviderClient != null) {
-                    fusedLocationProviderClient?.removeLocationUpdates(locationCallback)
+                    fusedLocationProviderClient?.removeLocationUpdates(gpsLocationCallback)
                 }
             }
         }
@@ -142,40 +139,21 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         when (requestCode) {
-//          TODO: Что за 1 ? Не нужно использовать литералы в коде
-            1 -> {
-//                if (grantResults.isNotEmpty() && grantResults[0] == PERMISSION_GRANTED) {
-//                } else {
-//                    finish()
-//                }
-                // TODO: Упрощаем код.
+            REQUEST_PERMISSION_CODE -> {
                 if (grantResults.firstOrNull() != PERMISSION_GRANTED) {
                     finish()
                 }
-
-//                return
             }
-        // TODO: Стандартное поведение
             else -> super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         }
-//        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
     private fun authToDatabase(token: String) {
-//      TODO: для чего проверки на not null ?
         val cred: AuthCredential = GoogleAuthProvider.getCredential(token, null)
-//        FirebaseAuth.getInstance()?.signInWithCredential(cred)
-//                ?.addOnCompleteListener(this) { task ->
-//                    if (task.isSuccessful) {
-//                        databaseRef.addValueEventListener(valueListener)
-//                    } else {
-//                        Toast.makeText(this@MapsActivity, getString(R.string.error_auth_failed), Toast.LENGTH_SHORT).show()
-//                        finish()
-//                    }
-//                }
+
         FirebaseAuth.getInstance().signInWithCredential(cred).addOnCompleteListener(this) { task ->
             if (task.isSuccessful) {
-                databaseRef.addValueEventListener(valueListener)
+                databaseRef.addValueEventListener(databaseValueListener)
             } else {
                 Toast.makeText(this@MapsActivity, getString(R.string.error_auth_failed), Toast.LENGTH_SHORT).show()
                 finish()
@@ -183,12 +161,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    //  TODO: Пустая строка в начале метода
     private fun initGoogleClient() {
-
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-//                TODO: Лишний вызов resources
-//                .requestIdToken(resources.getString(R.string.default_web_client_id))
                 .requestIdToken(getString(R.string.default_web_client_id))
                 .requestEmail()
                 .build()
@@ -197,48 +171,21 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 .addApi(Auth.GOOGLE_SIGN_IN_API, gso)
                 .build()
 
-        auth = FirebaseAuth.getInstance()
+        firebaseAuth = FirebaseAuth.getInstance()
     }
 
-    //  TODO: Пустая строка в начале метода
     private fun initMapsValues() {
-        //  TODO: Инициализировать карту не нужно при каждом вызове onResume
-        (supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment).getMapAsync(this)
-
-        //  TODO: Инициализировать location request также можно один раз.
-//        locationRequest = LocationRequest()
-//        with(locationRequest) {
-//            interval = INTERVAL
-//            fastestInterval = FASTEST_INTERVAL
-//            priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
-//        }
-//        TODO: Более упрощенный код
         locationRequest = LocationRequest().apply {
             interval = INTERVAL
             fastestInterval = FASTEST_INTERVAL
             priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
         }
-
-//        TODO: Можно инициализовароть 1 раз как late init var и использовать инстанс в дальнейшем не создавая новый
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
     }
 
     private fun initLocalUser() {
-        arrayMarkers.clear()
-        arrayUsers.clear()
+        mapUserLocationMarker.clear()
 
-//        TODO: Нейминг
-//        val copy = signInAccount
-//        if (copy != null) {
-//            userLocation = UserLocation(
-//                    copy.id.toString(),
-//                    copy.displayName.toString(),
-//                    copy.email.toString(),
-//                    0.0,
-//                    0.0,
-//                    true)
-//        }
-        val account = signInAccount
+        val account = googleSignInAccount
         if (account != null) {
             userLocation = UserLocation(
                     account.id.toString(),
@@ -250,26 +197,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         }
     }
 
-    private fun connectToDatabase() {
-        //  TODO: Так делать не стоит, если аккаунт будет null или же idToken аккаунта будет null вызов будет authToDatabase("null").
-        authToDatabase(signInAccount?.idToken.toString())
-    }
-
-    //    TODO: Этот метод не нужно выполнять при каждом пересоздании активити. В onSaveInstanceState мы можем сохранить инстанс залогиненного юзера.
     private fun signInGoogle() {
-//        TODO: Упрощаем код
-//        val signInIntent = Auth.GoogleSignInApi.getSignInIntent(googleApiClient)
-//        startActivityForResult(signInIntent, RC_SIGN_IN)
         startActivityForResult(Auth.GoogleSignInApi.getSignInIntent(googleApiClient), RC_SIGN_IN)
     }
 
     public override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == RC_SIGN_IN) {
-//            val result = Auth.GoogleSignInApi.getSignInResultFromIntent(data)
-//            handleSignInResult(result)
-
-            // TODO: Упрощаем код.
             handleSignInResult(Auth.GoogleSignInApi.getSignInResultFromIntent(data))
         }
     }
@@ -277,11 +211,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun handleSignInResult(result: GoogleSignInResult) {
         if (result.isSuccess) {
             if (result.signInAccount != null) {
-                signInAccount = result.signInAccount
+                googleSignInAccount = result.signInAccount
             }
         } else {
             finish()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putParcelable(KEY_GOOGLE_SIGN_IN_ACCOUNT, googleSignInAccount)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -298,31 +237,24 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         else -> super.onOptionsItemSelected(item)
     }
 
-    fun addMarker(userLocation: UserLocation): Marker? = map.addMarker(MarkerOptions()
+    private fun addMarker(userLocation: UserLocation): Marker = map.addMarker(MarkerOptions()
             .position(LatLng(userLocation.latitude, userLocation.longitude))
             .title(userLocation.name)
             .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)))
 
-    //  TODO: Очень странный метод. Я посмотрел все его вызовы и там всегда создается LatLng из latitude и longitude что бы потом обратно разделить их
-//  TODO: Раздели обновление параметров UserLocation и обновление записи в базе данных.
-    fun setData(latLng: LatLng, isActive: Boolean) {
+    fun setData(latitude: Double, longitude: Double, isActive: Boolean) {
         userLocation.isActive = isActive
-        userLocation.latitude = latLng.latitude
-        userLocation.longitude = latLng.longitude
+        userLocation.latitude = latitude
+        userLocation.longitude = longitude
+    }
 
-        // TODO: Я бы лучше использовал userLocation.id в качестве ключа вместо hashCode()
-        databaseRef.child(userLocation.hashCode().toString()).setValue(userLocation)
+    fun updateCurrentUserDataOnDatabase() {
+        databaseRef.child(userLocation.id).setValue(userLocation)
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
         map = googleMap
-//        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-//            map.isMyLocationEnabled = true
-//        }
-        // TODO: бесполезное условие, достаточно просто присвоить переменной значение результата сравнения.
-        // Для уменьшения кода, выполнены статические импорты метода checkSelfPermission и переменных ACCESS_FINE_LOCATION и PERMISSION_GRANTED
         map.isMyLocationEnabled = checkSelfPermission(this, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED
-
         map.mapType = GoogleMap.MAP_TYPE_NORMAL
         map.uiSettings?.isZoomControlsEnabled = true
     }
@@ -338,5 +270,15 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 })
                 .setCancelable(false)
                 .show()
+    }
+
+    fun dataChanged(value: UserLocation) {
+        if (userLocation.email != value.email) {
+            mapUserLocationMarker.put(value, addMarker(value))
+            mapUserLocationMarker[value]?.remove()
+            if (value.isActive) {
+                mapUserLocationMarker[value] = addMarker(value)
+            }
+        }
     }
 }
