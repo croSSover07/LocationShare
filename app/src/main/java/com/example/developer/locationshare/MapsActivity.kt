@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager.PERMISSION_GRANTED
+import android.location.Location
 import android.location.LocationManager
 import android.os.Bundle
 import android.support.v4.app.ActivityCompat
@@ -24,13 +25,11 @@ import com.google.android.gms.common.api.GoogleApiClient
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
-import com.google.android.gms.maps.model.BitmapDescriptorFactory
-import com.google.android.gms.maps.model.LatLng
-import com.google.android.gms.maps.model.Marker
-import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.*
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
@@ -50,7 +49,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         val PROVIDERS_CHANGED_ACTION_FILTER = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
     }
 
-    lateinit var map: GoogleMap
+    private lateinit var map: GoogleMap
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var locationRequest: LocationRequest
 
@@ -104,12 +103,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         registerReceiver(gpsLocationReceiver, PROVIDERS_CHANGED_ACTION_FILTER)
 
         if (checkSelfPermission(this, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED) {
-            val token = googleSignInAccount?.idToken
-            if (token != null) {
-                mapUserIdMarker.clear()
-
-                authToDatabase(token)
-
+            if (googleSignInAccount?.idToken != null) {
+                if (firebaseAuth?.currentUser?.zzboo() != googleSignInAccount?.idToken) {
+                    googleSignInAccount?.idToken?.let { authToDatabase(it) }
+                }
                 if (checkGpsStatus(this)) {
                     fusedLocationProviderClient.requestLocationUpdates(locationRequest, gpsLocationCallback, null)
                 } else {
@@ -122,7 +119,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             ActivityCompat.requestPermissions(this, arrayOf(ACCESS_FINE_LOCATION), REQUEST_PERMISSION_CODE)
         }
     }
-
 
     override fun onPause() {
         super.onPause()
@@ -152,7 +148,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     private fun authToDatabase(token: String) {
         val cred: AuthCredential = GoogleAuthProvider.getCredential(token, null)
 
-        FirebaseAuth.getInstance().signInWithCredential(cred).addOnCompleteListener(this) { task ->
+        firebaseAuth?.signInWithCredential(cred)?.addOnCompleteListener(this) { task ->
             if (task.isSuccessful) {
                 databaseRef.addValueEventListener(databaseValueListener)
             } else {
@@ -190,6 +186,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (result.isSuccess) {
             if (result.signInAccount != null) {
                 googleSignInAccount = result.signInAccount
+                googleSignInAccount?.idToken?.let { authToDatabase(it) }
             }
         } else {
             finish()
@@ -208,6 +205,9 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
         R.id.menu_log_out -> {
+            clearMapUserIdMarker()
+            googleSignInAccount?.id.let { deleteUserFromDatabase(it.toString()) }
+            googleSignInAccount = null
             googleApiClient.clearDefaultAccountAndReconnect()
             signInGoogle()
             true
@@ -215,12 +215,18 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         else -> super.onOptionsItemSelected(item)
     }
 
-    private fun addMarker(userLocation: UserLocation): Marker = map.addMarker(MarkerOptions()
-            .position(LatLng(userLocation.latitude, userLocation.longitude))
-            .title(userLocation.displayName)
-            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)))
+    private fun clearMapUserIdMarker() {
+        for ((_, marker) in mapUserIdMarker) {
+            marker.remove()
+        }
+        mapUserIdMarker.clear()
+    }
 
-    fun updateCurrentUserDataOnDatabase(latitude: Double? = null, longitude: Double? = null, isActive: Boolean) {
+    private fun createMarker() = map.addMarker(MarkerOptions()
+            .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA))
+            .position(LatLng(0.0, 0.0)))
+
+    private fun updateCurrentUserDataOnDatabase(latitude: Double? = null, longitude: Double? = null, isActive: Boolean) {
         if (latitude != null && longitude != null) {
             val googleSignInAccount = googleSignInAccount
             if (googleSignInAccount != null) {
@@ -256,12 +262,27 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 .show()
     }
 
-    fun dataChanged(value: UserLocation) {
-        if (googleSignInAccount?.email != value.email) {
-            mapUserIdMarker[value.id]?.remove()
-            if (value.isActive) {
-                mapUserIdMarker[value.id] = addMarker(value)
+    fun dataChanged(userLocation: UserLocation) {
+        if (googleSignInAccount?.email != userLocation.email) {
+            mapUserIdMarker[userLocation.id]?.remove()
+            mapUserIdMarker[userLocation.id] = createMarker().apply {
+                if (userLocation.isActive) {
+                    position = LatLng(userLocation.latitude, userLocation.longitude)
+                    title = userLocation.displayName
+                }
             }
         }
+    }
+
+    fun locationChanged(location: Location) {
+        updateCurrentUserDataOnDatabase(location.latitude, location.longitude, true)
+        val cameraPosition = CameraPosition.Builder()
+                .target(LatLng(location.latitude, location.longitude)).zoom(MapsActivity.DEFAULT_ZOOM).build()
+        map.animateCamera(CameraUpdateFactory
+                .newCameraPosition(cameraPosition))
+    }
+
+    private fun deleteUserFromDatabase(idUser: String) {
+        databaseRef.child(idUser).removeValue()
     }
 }

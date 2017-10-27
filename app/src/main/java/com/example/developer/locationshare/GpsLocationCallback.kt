@@ -2,9 +2,6 @@ package com.example.developer.locationshare
 
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationResult
-import com.google.android.gms.maps.CameraUpdateFactory
-import com.google.android.gms.maps.model.CameraPosition
-import com.google.android.gms.maps.model.LatLng
 import java.lang.ref.WeakReference
 
 
@@ -16,14 +13,6 @@ class GpsLocationCallback(mapsActivity: MapsActivity) : LocationCallback() {
         super.onLocationResult(locationResult)
 
         val mapsActivity = weakReference.get() ?: return
-
-        val location = locationResult.lastLocation
-        mapsActivity.updateCurrentUserDataOnDatabase(location.latitude, location.longitude, true)
-
-        val cameraPosition = CameraPosition.Builder()
-                .target(LatLng(location.latitude, location.longitude)).zoom(MapsActivity.DEFAULT_ZOOM).build()
-
-        mapsActivity.map.animateCamera(CameraUpdateFactory
-                .newCameraPosition(cameraPosition))
+        mapsActivity.locationChanged(locationResult.lastLocation)
     }
 }
