@@ -18,8 +18,7 @@ class GpsLocationCallback(mapsActivity: MapsActivity) : LocationCallback() {
         val mapsActivity = weakReference.get() ?: return
 
         val location = locationResult.lastLocation
-        mapsActivity.setData(location.latitude, location.longitude, true)
-        mapsActivity.updateCurrentUserDataOnDatabase()
+        mapsActivity.updateCurrentUserDataOnDatabase(location.latitude, location.longitude, true)
 
         val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(location.latitude, location.longitude)).zoom(MapsActivity.DEFAULT_ZOOM).build()

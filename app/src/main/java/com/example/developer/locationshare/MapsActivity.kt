@@ -47,18 +47,16 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         val FASTEST_INTERVAL = 10L
         val REQUEST_PERMISSION_CODE = 1
         val KEY_GOOGLE_SIGN_IN_ACCOUNT = "googleSignInAccount"
-
         val PROVIDERS_CHANGED_ACTION_FILTER = IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION)
     }
 
     lateinit var map: GoogleMap
-    private var fusedLocationProviderClient: FusedLocationProviderClient? = null
+    private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
     private lateinit var locationRequest: LocationRequest
 
-    private lateinit var userLocation: UserLocation
     private var googleSignInAccount: GoogleSignInAccount? = null
 
-    private val mapUserLocationMarker: HashMap<UserLocation, Marker> = hashMapOf()
+    private val mapUserIdMarker: HashMap<String, Marker> = hashMapOf()
 
     private var databaseRef = FirebaseDatabase.getInstance().reference.child("users")
     private lateinit var googleApiClient: GoogleApiClient
@@ -91,7 +89,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
             googleSignInAccount = (savedInstanceState.get(KEY_GOOGLE_SIGN_IN_ACCOUNT) as GoogleSignInAccount)
         }
         (supportFragmentManager.findFragmentById(R.id.map) as SupportMapFragment).getMapAsync(this)
+
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
+        locationRequest = LocationRequest().apply {
+            interval = INTERVAL
+            fastestInterval = FASTEST_INTERVAL
+            priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
+        }
     }
 
     override fun onResume() {
@@ -100,12 +104,14 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         registerReceiver(gpsLocationReceiver, PROVIDERS_CHANGED_ACTION_FILTER)
 
         if (checkSelfPermission(this, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED) {
-            if (googleSignInAccount != null) {
-                initLocalUser()
-                authToDatabase(googleSignInAccount?.idToken.toString())
+            val token = googleSignInAccount?.idToken
+            if (token != null) {
+                mapUserIdMarker.clear()
+
+                authToDatabase(token)
+
                 if (checkGpsStatus(this)) {
-                    initMapsValues()
-                    fusedLocationProviderClient?.requestLocationUpdates(locationRequest, gpsLocationCallback, null)
+                    fusedLocationProviderClient.requestLocationUpdates(locationRequest, gpsLocationCallback, null)
                 } else {
                     showGPSAlertDialog(this)
                 }
@@ -126,13 +132,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
         if (checkSelfPermission(this, ACCESS_FINE_LOCATION) == PERMISSION_GRANTED) {
             if (googleSignInAccount != null) {
                 databaseRef.removeEventListener(databaseValueListener)
-
-                setData(userLocation.latitude, userLocation.longitude, false)
-                updateCurrentUserDataOnDatabase()
-
-                if (fusedLocationProviderClient != null) {
-                    fusedLocationProviderClient?.removeLocationUpdates(gpsLocationCallback)
-                }
+                updateCurrentUserDataOnDatabase(isActive = false)
+                fusedLocationProviderClient.removeLocationUpdates(gpsLocationCallback)
             }
         }
     }
@@ -172,29 +173,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
                 .build()
 
         firebaseAuth = FirebaseAuth.getInstance()
-    }
-
-    private fun initMapsValues() {
-        locationRequest = LocationRequest().apply {
-            interval = INTERVAL
-            fastestInterval = FASTEST_INTERVAL
-            priority = LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY
-        }
-    }
-
-    private fun initLocalUser() {
-        mapUserLocationMarker.clear()
-
-        val account = googleSignInAccount
-        if (account != null) {
-            userLocation = UserLocation(
-                    account.id.toString(),
-                    account.displayName.toString(),
-                    account.email.toString(),
-                    0.0,
-                    0.0,
-                    true)
-        }
     }
 
     private fun signInGoogle() {
@@ -239,17 +217,23 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun addMarker(userLocation: UserLocation): Marker = map.addMarker(MarkerOptions()
             .position(LatLng(userLocation.latitude, userLocation.longitude))
-            .title(userLocation.name)
+            .title(userLocation.displayName)
             .icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA)))
 
-    fun setData(latitude: Double, longitude: Double, isActive: Boolean) {
-        userLocation.isActive = isActive
-        userLocation.latitude = latitude
-        userLocation.longitude = longitude
-    }
-
-    fun updateCurrentUserDataOnDatabase() {
-        databaseRef.child(userLocation.id).setValue(userLocation)
+    fun updateCurrentUserDataOnDatabase(latitude: Double? = null, longitude: Double? = null, isActive: Boolean) {
+        if (latitude != null && longitude != null) {
+            val googleSignInAccount = googleSignInAccount
+            if (googleSignInAccount != null) {
+                databaseRef.child(googleSignInAccount.id).setValue(UserLocation(googleSignInAccount.id.toString(),
+                        googleSignInAccount.displayName.toString(),
+                        googleSignInAccount.email.toString(),
+                        latitude,
+                        longitude,
+                        isActive))
+            }
+        } else {
+            databaseRef.child(googleSignInAccount?.id).child("active").setValue(isActive)
+        }
     }
 
     override fun onMapReady(googleMap: GoogleMap) {
@@ -273,11 +257,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback {
     }
 
     fun dataChanged(value: UserLocation) {
-        if (userLocation.email != value.email) {
-            mapUserLocationMarker.put(value, addMarker(value))
-            mapUserLocationMarker[value]?.remove()
+        if (googleSignInAccount?.email != value.email) {
+            mapUserIdMarker[value.id]?.remove()
             if (value.isActive) {
-                mapUserLocationMarker[value] = addMarker(value)
+                mapUserIdMarker[value.id] = addMarker(value)
             }
         }
     }
